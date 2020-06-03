@@ -7,9 +7,12 @@
 //
 
 import UIKit
+import AVFoundation
 
 class CameraViewController: UIViewController {
 
+    lazy var captureSession = AVCaptureSession()
+    
     @IBOutlet var recordButton: UIButton!
     @IBOutlet var cameraView: CameraPreviewView!
 
@@ -19,8 +22,63 @@ class CameraViewController: UIViewController {
 
 		// Resize camera preview to fill the entire screen
 		cameraView.videoPlayerView.videoGravity = .resizeAspectFill
+        setUpCaptureSession()
 	}
+    
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        captureSession.startRunning()
+    }
+    
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        captureSession.stopRunning()
+    }
 
+    private func setUpCaptureSession() {
+        
+        captureSession.beginConfiguration()
+        //Inputs
+        
+        //Camera
+        let camera = bestCamera()
+        
+        guard let cameraInput = try? AVCaptureDeviceInput(device: camera),
+            captureSession.canAddInput(cameraInput) else {
+                // FUTURE: Display the error so you understand why it failed
+                fatalError("Cannot create camera input, do something better than crash")
+        }
+        captureSession.addInput(cameraInput)
+        
+        //Microphone
+        
+        //QualityLevel
+        
+        if captureSession.canSetSessionPreset(.hd1920x1080) {
+            captureSession.sessionPreset = .hd1920x1080
+        }
+        
+        //Outputs
+        
+        //Set the captureSession into our CameraPreviewView
+        captureSession.commitConfiguration()
+        cameraView.session = captureSession
+    }
+    
+    private func bestCamera() -> AVCaptureDevice {
+        // ideal camera, fallback camera, FUTURE: we add a button to chose front/back
+        if let ultraWideCamera = AVCaptureDevice.default(.builtInUltraWideCamera, for: .video, position: .back) {
+            return ultraWideCamera
+        }
+        
+        if let wideAngleCamera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) // try .front
+        {
+            return wideAngleCamera
+        }
+        
+        //Simulator or requested hardware camera doesn't work
+        fatalError("No camera available, are you on a simulator?") // TODO: Show UI instead of fatal error
+    }
 
     @IBAction func recordButtonPressed(_ sender: Any) {
 
