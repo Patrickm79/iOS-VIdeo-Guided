@@ -10,20 +10,23 @@ import UIKit
 import AVFoundation
 
 class CameraViewController: UIViewController {
-
-    lazy var captureSession = AVCaptureSession()
+    
+    lazy private var captureSession = AVCaptureSession()
+    lazy private var fileOutput = AVCaptureMovieFileOutput()
+    private var playerView: VideoPlayerView!
+    private var videoPlayer: AVPlayer?
     
     @IBOutlet var recordButton: UIButton!
     @IBOutlet var cameraView: CameraPreviewView!
-
-
-	override func viewDidLoad() {
-		super.viewDidLoad()
-
-		// Resize camera preview to fill the entire screen
-		cameraView.videoPlayerView.videoGravity = .resizeAspectFill
+    
+    
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        
+        // Resize camera preview to fill the entire screen
+        cameraView.videoPlayerView.videoGravity = .resizeAspectFill
         setUpCaptureSession()
-	}
+    }
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
@@ -34,7 +37,7 @@ class CameraViewController: UIViewController {
         super.viewDidDisappear(animated)
         captureSession.stopRunning()
     }
-
+    
     private func setUpCaptureSession() {
         
         captureSession.beginConfiguration()
@@ -59,6 +62,11 @@ class CameraViewController: UIViewController {
         }
         
         //Outputs
+        guard captureSession.canAddOutput(fileOutput) else {
+            fatalError("Cannot add movie recording")
+        }
+        captureSession.addOutput(fileOutput)
+        
         
         //Set the captureSession into our CameraPreviewView
         captureSession.commitConfiguration()
@@ -79,21 +87,77 @@ class CameraViewController: UIViewController {
         //Simulator or requested hardware camera doesn't work
         fatalError("No camera available, are you on a simulator?") // TODO: Show UI instead of fatal error
     }
-
+    
+    private func updateViews() {
+        recordButton.isSelected = fileOutput.isRecording
+    }
+    
     @IBAction func recordButtonPressed(_ sender: Any) {
-
-	}
-	
-	/// Creates a new file URL in the documents directory
-	private func newRecordingURL() -> URL {
-		let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-
-		let formatter = ISO8601DateFormatter()
-		formatter.formatOptions = [.withInternetDateTime]
-
-		let name = formatter.string(from: Date())
-		let fileURL = documentsDirectory.appendingPathComponent(name).appendingPathExtension("mov")
-		return fileURL
-	}
+        toggleRecording()
+    }
+    
+    private func toggleRecording() {
+        if fileOutput.isRecording {
+            fileOutput.stopRecording()
+        } else {
+            fileOutput.startRecording(to: newRecordingURL(), recordingDelegate: self)
+        }
+        updateViews()
+    }
+    
+    
+    /// Creates a new file URL in the documents directory
+    private func newRecordingURL() -> URL {
+        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        
+        let name = formatter.string(from: Date())
+        let fileURL = documentsDirectory.appendingPathComponent(name).appendingPathExtension("mov")
+        return fileURL
+    }
+    
+    private func playMovie(url: URL) {
+        let player = AVPlayer(url: url)
+        
+        if playerView == nil {
+            // setup view
+            let playerView = VideoPlayerView()
+            playerView.player = player
+            
+            // customize the frame
+            var frame = view.bounds
+            frame.size.height = frame.size.height / 4
+            frame.size.width = frame.size.width / 4
+            frame.origin.y = view.layoutMargins.top
+            playerView.frame = frame
+            
+            view.addSubview(playerView)
+            self.playerView = playerView
+        }
+        player.play()
+        self.videoPlayer = player
+    }
 }
 
+extension CameraViewController: AVCaptureFileOutputRecordingDelegate {
+    
+    func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
+        print("Did start recording to URL: \(fileURL.path)")
+        updateViews()
+    }
+    
+    func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
+        if let error = error {
+            print("Error saving movie recording: \(error)")
+            return
+        }
+        updateViews()
+        print("Play movie")
+        DispatchQueue.main.async {
+            self.playMovie(url: outputFileURL)
+        }
+    }
+    
+}
